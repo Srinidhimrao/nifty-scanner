@@ -4,8 +4,26 @@ import pandas as pd
 from datetime import datetime, timedelta
 import time
 
-# 1. Setup Page
-st.set_page_config(page_title="Seasonality Scanner", layout="wide")
+# --- 1. SETUP PAGE ---
+st.set_page_config(page_title="Seasonality & Breakout Dashboard", layout="wide")
+
+# Symbols List
+NIFTY100 = [
+    "ABB", "ABBOTINDIA", "ADANIENT", "ADANIGREEN", "ADANIPORTS", "ADANIPOWER", "ATGL",
+    "AMBUJACEM", "APOLLOHOSP", "ASIANPAINT", "AXISBANK", "BAJAJ-AUTO", "BAJFINANCE",
+    "BAJAJFINSV", "BAJAJHLDNG", "BANKBARODA", "BEL", "BERGEPAINT", "BHARTIARTL", "BIOCON",
+    "BPCL", "BRITANNIA", "CANBK", "CHOLAFIN", "CIPLA", "COALINDIA", "COLPAL", "DLF",
+    "DABUR", "DIVISLAB", "DRREDDY", "EICHERMOT", "GAIL", "GLAND", "GODREJCP", "GRASIM",
+    "GUJGASLTD", "HAL", "HAVELLS", "HCLTECH", "HDFCBANK", "HDFCLIFE", "HEROMOTOCO",
+    "HINDALCO", "HINDUNILVR", "ICICIBANK", "ICICIGI", "ICICIPRULI", "IDFCFIRSTB", "ITC",
+    "INDHOTEL", "INDUSINDBK", "INDUSTOWER", "INFY", "IOC", "IRCTC", "IRFC", "JSWSTEEL",
+    "JINDALSTEL", "JIOFIN", "JUBLFOOD", "KOTAKBANK", "LTIM", "LT", "LICI", "M&M",
+    "MARICO", "MARUTI", "NESTLEIND", "NTPC", "NYKAA", "ONGC", "PAGEIND",
+    "PIDILITIND", "PIIND", "PFC", "POWERGRID", "PNB", "RECLTD", "RELIANCE", "SBICARD",
+    "SBILIFE", "SBIN", "SRF", "SHREECEM", "SIEMENS", "SUNPHARMA", "TATACONSUM", "TATAELXSI",
+    "TATAMOTORS", "TATAPOWER", "TATASTEEL", "TCS", "TECHM", "TITAN", "TORNTPHARM", "TRENT",
+    "TVSMOTOR", "ULTRACEMCO", "UNITDSPR", "VBL", "VEDL", "WIPRO", "ZOMATO", "ZYDUSLIFE"
+]
 
 MONTH_MAP = {
     "January": 1, "February": 2, "March": 3, "April": 4,
@@ -13,11 +31,10 @@ MONTH_MAP = {
     "September": 9, "October": 10, "November": 11, "December": 12
 }
 
-# 2. Data Fetching Functions
+# --- 2. DATA FUNCTIONS ---
 @st.cache_data(ttl=300) 
 def get_stock_data(ticker, start_date):
     try:
-        # multi_level_index=False ensures a flat dataframe structure
         data = yf.download(ticker, start=start_date, interval="1d", progress=False, auto_adjust=True, multi_level_index=False)
         return data
     except:
@@ -25,13 +42,15 @@ def get_stock_data(ticker, start_date):
 
 @st.cache_data(ttl=300)
 def get_month_opening_stats(ticker_ns, target_month_name):
+    """Gets the High and Close of the 1st hour of the 1st trading day of the target month in the current year."""
     now = datetime.now()
     target_month_num = MONTH_MAP[target_month_name]
-    start_dt = datetime(now.year, target_month_num, 1)
     
-    if start_dt > now:
+    # If the selected month hasn't happened yet this year, return None
+    if target_month_num > now.month:
         return None, None
         
+    start_dt = datetime(now.year, target_month_num, 1)
     end_dt = start_dt + timedelta(days=7) 
     try:
         intraday = yf.download(ticker_ns, start=start_dt, end=end_dt, interval="1h", progress=False, multi_level_index=False)
@@ -39,18 +58,18 @@ def get_month_opening_stats(ticker_ns, target_month_name):
         return float(intraday['High'].iloc[0]), float(intraday['Close'].iloc[0])
     except: return None, None
 
-# 3. Sidebar UI
+# --- 3. SIDEBAR UI ---
 st.sidebar.header("🎯 Analysis Settings")
 
-# --- NEW: Year Selection for History ---
+# Year Selector
 current_year = datetime.now().year
 start_year = st.sidebar.selectbox(
     "Historical Data Start Year:", 
     range(current_year - 25, current_year), 
-    index=7 # Default to ~18 years ago (2026 - 18 = 2008)
+    index=7 # Default roughly 18 years
 )
 
-# Month Selection
+# Month Selector
 current_month_name = datetime.now().strftime('%B')
 month_options = ["Current Month (" + current_month_name + ")"] + list(MONTH_MAP.keys())
 selected_option = st.sidebar.selectbox("Target Month for Analysis:", month_options)
@@ -59,45 +78,26 @@ target_month = current_month_name if "Current Month" in selected_option else sel
 win_min = st.sidebar.slider("Min Historical Win Rate %", 50, 100, 70)
 refresh_interval = st.sidebar.selectbox("Auto-Refresh Live Data:", ["5 min", "10 min", "Manual Only"])
 
-# 4. Main App Logic
+# --- 4. MAIN APP LOGIC ---
 def run_main_analysis(target_month, history_start_year):
-    # Convert selected year to start date string
     start_date_str = f"{history_start_year}-01-01"
     
     st.subheader(f"📊 {target_month} Seasonality (Data since {history_start_year})")
-    st.caption(f"Updated: {datetime.now().strftime('%H:%M:%S')} | Historical range: {history_start_year} to Present")
+    st.caption(f"Updated: {datetime.now().strftime('%H:%M:%S')} | Target: {target_month}")
     
     results = []
     progress_text = st.empty()
     bar = st.progress(0)
     
-    # Replace with your full NIFTY100 list
-        # Use your full NIFTY100 list here
-    symbols = [
-    "ABB", "ABBOTINDIA", "ADANIENT", "ADANIGREEN", "ADANIPORTS", "ADANIPOWER", "ATGL", 
-    "AMBUJACEM", "APOLLOHOSP", "ASIANPAINT", "AXISBANK", "BAJAJ-AUTO", "BAJFINANCE", 
-    "BAJAJFINSV", "BAJAJHLDNG", "BANKBARODA", "BEL", "BERGEPAINT", "BHARTIARTL", "BIOCON", 
-    "BPCL", "BRITANNIA", "CANBK", "CHOLAFIN", "CIPLA", "COALINDIA", "COLPAL", "DLF", 
-    "DABUR", "DIVISLAB", "DRREDDY", "EICHERMOT", "GAIL", "GLAND", "GODREJCP", "GRASIM", 
-    "GUJGASLTD", "HAL", "HAVELLS", "HCLTECH", "HDFCBANK", "HDFCLIFE", "HEROMOTOCO", 
-    "HINDALCO", "HINDUNILVR", "ICICIBANK", "ICICIGI", "ICICIPRULI", "IDFCFIRSTB", "ITC", 
-    "INDHOTEL", "INDUSINDBK", "INDUSTOWER", "INFY", "IOC", "IRCTC", "IRFC", "JSWSTEEL", 
-    "JINDALSTEL", "JIOFIN", "JUBLFOOD", "KOTAKBANK", "LTIM", "LT", "LICI", "M&M", 
-    "MARICO", "MARUTI", "NESTLEIND", "NTPC", "NYKAA", "ONGC", "PAGEIND", "PANAMAPET", 
-    "PIDILITIND", "PIIND", "PFC", "POWERGRID", "PNB", "RECLTD", "RELIANCE", "SBICARD", 
-    "SBILIFE", "SBIN", "SRF", "SHREECEM", "SIEMENS", "SUNPHARMA", "TATACONSUM", "TATAELXSI", 
-    "TATAMOTORS", "TATAPOWER", "TATASTEEL", "TCS", "TECHM", "TITAN", "TORNTPHARM", "TRENT", 
-    "TVSMOTOR", "ULTRACEMCO", "UNITDSPR", "VBL", "VEDL", "WIPRO", "ZOMATO", "ZYDUSLIFE"
-    ]
-
-    for idx, sym in enumerate(symbols):
+    # Process Stocks
+    for idx, sym in enumerate(NIFTY100):
         ticker = sym + ".NS"
-        progress_text.text(f"Analyzing {sym}...")
+        progress_text.text(f"Scanning {sym}...")
         
         data = get_stock_data(ticker, start_date_str)
         if data.empty: continue
 
-        # Seasonality Calculation
+        # Seasonality Calc
         m_rets = data['Close'].resample('ME').last().pct_change() * 100
         df_rets = m_rets.dropna().to_frame(name='Ret')
         df_rets['Month'] = df_rets.index.month_name()
@@ -108,6 +108,7 @@ def run_main_analysis(target_month, history_start_year):
         stats = pd.merge(stats, wins, on='Month', how='left').fillna(0)
         stats['Win_Rate_%'] = (stats['Win_Count'] / stats['count']) * 100
 
+        # Filter for Target Month
         if target_month in stats['Month'].values:
             m_stat = stats[stats['Month'] == target_month].iloc[0]
 
@@ -115,11 +116,16 @@ def run_main_analysis(target_month, history_start_year):
                 fh_high, fh_close = get_month_opening_stats(ticker, target_month)
                 curr_price = float(data['Close'].iloc[-1])
                 
-                # Logic for Breakout Status
-                if fh_high is None:
-                    status = "⌛ FUTURE" if MONTH_MAP[target_month] > datetime.now().month else "⚠️ NO DATA"
-                else:
+                # Logic for Status
+                target_month_num = MONTH_MAP[target_month]
+                current_month_num = datetime.now().month
+
+                if target_month_num > current_month_num:
+                    status = "⌛ UPCOMING"
+                elif fh_high is not None:
                     status = "🚀 BREAKOUT" if curr_price > fh_high else "WAITING"
+                else:
+                    status = "⚠️ NO DATA"
 
                 results.append({
                     'Ticker': sym,
@@ -127,11 +133,11 @@ def run_main_analysis(target_month, history_start_year):
                     'Win_Rate_%': round(m_stat['Win_Rate_%'], 1),
                     'Hist_Avg_Ret_%': round(m_stat['mean'], 2),
                     'Current_Price': round(curr_price, 2),
-                    'MTD_Gain_%': round(((curr_price / fh_close) - 1) * 100, 2) if fh_close else 0,
-                    'Month_Start_High': round(fh_high, 2) if fh_high else 0,
-                    'Years_Back': int(m_stat['count'])
+                    'MTD_Gain_%': round(((curr_price / fh_close) - 1) * 100, 2) if (fh_close and fh_close > 0) else 0,
+                    '1H_High': round(fh_high, 2) if fh_high else 0,
+                    'Years_Found': int(m_stat['count'])
                 })
-        bar.progress((idx + 1) / len(symbols))
+        bar.progress((idx + 1) / len(NIFTY100))
     
     bar.empty()
     progress_text.empty()
@@ -139,12 +145,13 @@ def run_main_analysis(target_month, history_start_year):
     if results:
         df_final = pd.DataFrame(results).sort_values(by=["Status", "Win_Rate_%"], ascending=[True, False])
         
+        # Modern Pandas styling (.map instead of .applymap)
         def style_status(val):
-            if val == "🚀 BREAKOUT": return 'background-color: #1b5e20; color: white'
-            if val == "⌛ FUTURE": return 'color: #888888'
-            return 'color: #ffa000'
+            if val == "🚀 BREAKOUT": return 'background-color: #1b5e20; color: white; font-weight: bold'
+            if val == "⌛ UPCOMING": return 'color: #00d4ff; font-style: italic'
+            if val == "WAITING": return 'color: #ffa000'
+            return 'color: #888888'
 
-        # Using .map() for modern Pandas compatibility
         st.dataframe(
             df_final.style.map(style_status, subset=['Status']),
             use_container_width=True,
@@ -153,10 +160,10 @@ def run_main_analysis(target_month, history_start_year):
     else:
         st.warning(f"No stocks found with >{win_min}% win rate in {target_month} since {history_start_year}.")
 
-# 5. Execution
+# Run
 run_main_analysis(target_month, start_year)
 
-# Auto-Refresh Logic
+# --- 5. REFRESH LOGIC ---
 if "Manual" not in refresh_interval:
     sleep_time = 300 if "5" in refresh_interval else 600
     time.sleep(sleep_time)
