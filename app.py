@@ -75,26 +75,38 @@ def run_scanner():
         except: continue
     return pd.DataFrame(results)
 
+
 # --- WEB UI ---
 st.title("🎯 Nifty 100 Seasonality Dashboard")
 st.write(f"Live Analysis for **{datetime.now().strftime('%B %Y')}** (Data anchored to 1st Hour High)")
 
 if st.button('🔄 Refresh Live Market Data'):
+    # This clears the cache so the app fetches fresh prices
     st.cache_data.clear()
 
-with st.spinner('Scanning NSE stocks... this takes 1-2 minutes.'):
-    df = run_scanner()
+# Perform the scan
+df = run_scanner()
 
 if not df.empty:
-    # Color coding for the Status column
+    # Color coding logic
     def color_status(val):
-        color = '#27ae60' if val == "🚀 BREAKOUT" else '#f39c12'
-        return f'color: white; background-color: {color}; font-weight: bold'
+        if val == "🚀 BREAKOUT":
+            return 'color: white; background-color: #27ae60; font-weight: bold'
+        return 'color: white; background-color: #f39c12; font-weight: bold'
 
+    # Sort results
     df = df.sort_values(by=['Status', 'Win_Rate_%'], ascending=[False, False])
     
-    st.dataframe(df.style.applymap(color_status, subset=['Status'])
-                 .format({"Win_Rate_%": "{:.1f}%", "Hist_Avg_%": "{:.2f}%", "MTD_%": "{:.2f}%"}), 
-                 use_container_width=True)
+    # --- UPDATED LINE HERE ---
+    # Changed .applymap to .map to support Pandas 2.x
+    styled_df = df.style.map(color_status, subset=['Status']).format({
+        "Win_Rate_%": "{:.1f}%", 
+        "Hist_Avg_%": "{:.2f}%", 
+        "MTD_%": "{:.2f}%",
+        "Price": "{:.2f}",
+        "1H_High": "{:.2f}"
+    })
+    
+    st.dataframe(styled_df, use_container_width=True, height=600)
 else:
     st.info("No active opportunities found with >70% Win Rate for this month.")
